@@ -4,6 +4,11 @@ import matplotlib.colors as colors
 from numpy import nan_to_num, subtract, add, divide, multiply
 from osgeo import gdal, gdalconst
 from gdal import GetDriverByName
+from highcharts import Highchart
+
+
+#inicializando o graafico
+chart = Highchart()
 
 
 def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tiff, data_type=gdal.GDT_Float32):
@@ -39,7 +44,7 @@ def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tif
     np_nir_as32    = np_nir.astype(np.float32)
     np_colour_as32 = np_colour.astype(np.float32)
 
-    
+
     #Tratando divisao por zero
     np.seterr(divide='ignore', invalid='ignore')
 
@@ -66,25 +71,51 @@ def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tif
             return np.ma.masked_array(np.interp(value,x,y), np.isnan(value))
 
     # definindo valores minimo e maximo para construcao do grafico        
-    min = np.nanmin(result);
-    max = np.nanmax(result);
+    min = -1#np.nanmin(result);
+    max = 1#np.nanmax(result);
     mid = 0.1
     
     #printando valores
-    print('Minimo ',min);
-    print('Maximo ',max);
+    #print('Minimo ',min);
+    #print('Maximo ',max);
 
 
     #criando imagem .png, demonstrando grafico escala falsa cor 
-    fig = plt.figure(figsize=(20,10))
-    ax  = fig.add_subplot(111) 
+    fig  = plt.figure(figsize=(20,10))
+    ax   = fig.add_subplot(111) 
     cmap = plt.cm.RdYlGn
-    cax = ax.imshow(result,cmap=cmap, clim=(min,max), norm=MidpointNormalize(midpoint=mid,vmin=min,vmax=max))
+    cax  = ax.imshow(result,cmap=cmap, clim=(min,max), norm=MidpointNormalize(midpoint=mid,vmin=min,vmax=max))
     ax.axis('off'),
     ax.set_title('NDVI', fontsize=18,fontweight='bold')
     cbar = fig.colorbar(cax, orientation='horizontal', shrink=0.65)
     fig.savefig('ndvi-escala.png', dpi=200,bbox_inches='tight', pad_inches=0.7)
     plt.show()
+
+    #criando imagem com o histograma
+    fig2 = plt.figure(figsize=(10,10))
+    ax   = fig2.add_subplot(111)
+
+    plt.title("Histograma NDVI", fontsize=18,fontweight='bold')
+    plt.xlabel("Valores NDVI", fontsize=14)
+    plt.ylabel("# pixels", fontsize=12)
+    x = result[~np.isnan(result)]
+    numBins = 20
+    count   = len(x)
+    lista   = [];
+    i       = 0    
+    while(i <= count):
+        
+        lista.append(x[i])
+        i  = i + 1000
+
+    ax.hist(lista,numBins,color='#43A047',alpha=0.8)
+
+    fig2.savefig('ndvi-histograma.png', dpi=200,bbox_inches='tight',pad_inches=0.7)
+    plt.show()
+
+    #chart.add_data_set(lista,series_type='pie', name='NDVI Series')
+    #chart.set_options('title',{'text':'NDVI'})
+    #chart.save_file('grafico');
 
 
     #Inicializando o driver geotiff.
@@ -105,7 +136,7 @@ def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tif
         output_band.SetNoDataValue(-99)
         output_band.WriteArray(result)
     else:
-        raise ValueError('Invalid output data type.  Valid types are gdal.UInt16 or gdal.Float32.')
+        raise ValueError('Tipo de dados de saida invalidos. Os tipos validos sao gdal.UInt16 ou gdal.Float32.')
 
     # Set the geographic transformation as the input.
     output.SetGeoTransform(in_geotransform)
