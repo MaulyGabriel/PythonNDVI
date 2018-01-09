@@ -6,34 +6,9 @@ from osgeo import gdal, gdalconst
 from gdal import GetDriverByName
 from highcharts import Highchart
 
-
-#inicializando o graafico
 chart = Highchart()
 
-
 def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tiff, data_type=gdal.GDT_Float32):
-
-    """
-    Performs an NDVI calculation given two input bands, as well as other information that can be retrieved from the
-    original image.
-    @param in_nir_band A GDAL band object representing the near-infrared image data.
-    @type in_nir_band GDALRasterBand
-    @param in_colour_band A GDAL band object representing the colour image data.
-    @type: in_colour_band GDALRasterBand
-    @param in_rows The number of rows in both input bands.
-    @type: in_rows int
-    @param in_cols The number of columns in both input bands.
-    @type: in_cols int
-    @param in_geotransform The geographic transformation to be applied to the output image.
-    @type in_geotransform Tuple (as returned by GetGeoTransform())
-    @param out_tiff Path to the desired output .tif file.
-    @type: out_tiff String (should end in ".tif")
-    @param data_type Data type of output image.  Valid values are gdal.UInt16 and gdal.Float32.  Default is
-                      gdal.Float32
-    @type data_type GDALDataType
-    @return None
-    """
-
 
 
     #Leia as faixas de entrada como matrizes numpy.
@@ -44,16 +19,15 @@ def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tif
     np_nir_as32    = np_nir.astype(np.float32)
     np_colour_as32 = np_colour.astype(np.float32)
 
-
     #Tratando divisao por zero
     np.seterr(divide='ignore', invalid='ignore')
 
     # Calculando a formula NDVI  = (nir + red) / ( nir + red)
     numerator   = subtract(np_nir_as32, np_colour_as32)
     denominator = add(np_nir_as32, np_colour_as32)
-    result      = divide(numerator, denominator)
+    result     = divide(numerator, denominator)
 
-    # Remova todas as areas fora do limite
+    # Remove todas as areas fora do limite
     result[result == -0] = -99
 
     #capturando valores minimo e maximo com numpy
@@ -70,53 +44,85 @@ def ndvi(in_nir_band, in_colour_band, in_rows, in_cols, in_geotransform, out_tif
             x, y = [self.vmin, self.midpoint, self.vmax],[0,0.5,1]
             return np.ma.masked_array(np.interp(value,x,y), np.isnan(value))
 
-    # definindo valores minimo e maximo para construcao do grafico        
-    min = -1#np.nanmin(result);
-    max = 1#np.nanmax(result);
-    mid = 0.1
+    # definindo valores minimo e maximo para construcao do grafico (NDVI vai do -1 a 1)        
+    min = -1 #np.nanmin(result);
+    max = 1  #np.nanmax(result);
+    mid = 0.25
     
-    #printando valores
-    #print('Minimo ',min);
-    #print('Maximo ',max);
-
-
     #criando imagem .png, demonstrando grafico escala falsa cor 
-    fig  = plt.figure(figsize=(20,10))
+    fig  = plt.figure(figsize=(15,10))
     ax   = fig.add_subplot(111) 
     cmap = plt.cm.RdYlGn
     cax  = ax.imshow(result,cmap=cmap, clim=(min,max), norm=MidpointNormalize(midpoint=mid,vmin=min,vmax=max))
     ax.axis('off'),
-    ax.set_title('NDVI', fontsize=18,fontweight='bold')
-    cbar = fig.colorbar(cax, orientation='horizontal', shrink=0.65)
+    ax.set_title('Escala NDVI', fontsize=18,fontweight='bold')
+    cbar = fig.colorbar(cax, orientation='horizontal', shrink=0.50)
     fig.savefig('ndvi-escala.png', dpi=200,bbox_inches='tight', pad_inches=0.7)
+    #mostra a imagem
     plt.show()
 
     #criando imagem com o histograma
-    fig2 = plt.figure(figsize=(10,10))
+    fig2 = plt.figure(figsize=(15,10))
     ax   = fig2.add_subplot(111)
 
     plt.title("Histograma NDVI", fontsize=18,fontweight='bold')
-    plt.xlabel("Valores NDVI", fontsize=14)
+    plt.xlabel("Escala NDVI", fontsize=12)
     plt.ylabel("# pixels", fontsize=12)
     x = result[~np.isnan(result)]
+   
     numBins = 20
     count   = len(x)
-    lista   = [];
+    lista   = [-1];
     i       = 0    
+   
     while(i <= count):
         
-        lista.append(x[i])
-        i  = i + 1000
+        lista.append(round(x[i],2)) # append or extend
+        i  = i + 100
+
+    lista = sorted(lista)
+    data  = np.array(lista)
+    data  = set(data)
+    data  = sorted(data)
+
+    print(data)
 
     ax.hist(lista,numBins,color='#43A047',alpha=0.8)
 
     fig2.savefig('ndvi-histograma.png', dpi=200,bbox_inches='tight',pad_inches=0.7)
+    #mostra a imagem
     plt.show()
 
-    #chart.add_data_set(lista,series_type='pie', name='NDVI Series')
-    #chart.set_options('title',{'text':'NDVI'})
-    #chart.save_file('grafico');
+    #Motando grafico Highcharts
+    options = {
+    'title': {
+    'text': 'Calculo NDVI'
+    },
+    'subtitle': {
+    'text': 'resultado das imagens processadas'
+    },
+    'xAxis': {
+    'categories': ['-1','-0.75','-0.50','-0.25','0','0.25','0.50','0.75','1'],
+    },
+    'yAxis': {
+    'title': {
+    'text': 'Pixels'
+    }
+    },
+    }
 
+    chart.set_dict_options(options)
+
+    #convertendo o array num para lista
+    #data = data.tolist()
+    #print(data)
+
+    chart.add_data_set(data,series_type='areaspline', name='NDVI Series')
+    chart.set_options('chart', {'resetZoomButton': {'relativeTo': 'plot', 'position': {'x': 0,'y': -30}}})
+    chart.set_options('xAxis', {'events': {'afterBreaks': 'function(e){return}'} ,'tickInterval': 0.25})
+    chart.set_options('tooltip', {'formatter': 'default_tooltip'})
+    chart.save_file('grafico');
+    
 
     #Inicializando o driver geotiff.
     geotiff = GetDriverByName('GTiff')
